@@ -29,6 +29,15 @@ public final class PositionState {
         return new PositionState(BigDecimal.ZERO, BigDecimal.ZERO);
     }
 
+    PositionState copy() {
+        PositionState copy = new PositionState(quantity, averageEntryPrice);
+        copy.realizedPnl = realizedPnl;
+        copy.fundingPnl = fundingPnl;
+        copy.fees = fees;
+        copy.unresolvedFeeCount = unresolvedFeeCount;
+        return copy;
+    }
+
     public BigDecimal quantity() {
         return quantity;
     }
@@ -62,23 +71,24 @@ public final class PositionState {
         realizedPnl = realizedPnl.add(amount);
     }
 
-    void addFundingPnl(BigDecimal amount) {
+    public void addFundingPnl(BigDecimal amount) {
         fundingPnl = fundingPnl.add(amount);
     }
 
-    void addFee(BigDecimal amount) {
+    public void addFee(BigDecimal amount) {
         fees = fees.add(amount);
     }
 
-    void addUnresolvedFee() {
+    public void addUnresolvedFee() {
         unresolvedFeeCount++;
     }
 
-    void resolveFee(BigDecimal amount) {
+    public void resolveFee(BigDecimal amount) {
         if (unresolvedFeeCount == 0) {
             throw new IllegalStateException("No unresolved fee to resolve");
         }
-        fees = fees.add(amount);
+        addFee(amount);
         unresolvedFeeCount--;
     }
+
 }

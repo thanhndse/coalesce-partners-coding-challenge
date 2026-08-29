@@ -1,5 +1,6 @@
 package com.coalesce.challenge.event;
 
+import com.coalesce.challenge.domain.PriceKey;
 import com.coalesce.challenge.util.Decimals;
 
 import java.math.BigDecimal;
@@ -7,9 +8,9 @@ import java.time.Instant;
 import java.util.Objects;
 
 public record PriceEvent(
-    Instant timestamp,
-    String symbol,
-    BigDecimal price
+        Instant timestamp,
+        String symbol,
+        BigDecimal price
 ) implements Event {
     public PriceEvent {
         Objects.requireNonNull(timestamp, "timestamp");
@@ -23,7 +24,7 @@ public record PriceEvent(
     }
 
     @Override
-    public String identity() {
-        return "PRICE:" + symbol + ":" + timestamp;
+    public PriceKey identity() {
+        return new PriceKey(symbol, timestamp);
     }
 }

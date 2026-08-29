@@ -2,6 +2,7 @@ package com.coalesce.challenge.event;
 
 import com.coalesce.challenge.domain.PositionKey;
 import com.coalesce.challenge.domain.Side;
+import com.coalesce.challenge.domain.TradeKey;
 import com.coalesce.challenge.util.Decimals;
 
 import java.math.BigDecimal;
@@ -41,11 +42,15 @@ public record TradeEvent(
     }
 
     @Override
-    public String identity() {
-        return "TRADE:" + venue + ":" + tradeId;
+    public TradeKey identity() {
+        return new TradeKey(venue, tradeId);
     }
 
     public PositionKey positionKey() {
         return new PositionKey(trader, venue, venueAccount, symbol);
+    }
+
+    public TradeKey tradeKey() {
+        return new TradeKey(venue, tradeId);
     }
 }

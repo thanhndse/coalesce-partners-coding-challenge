@@ -8,7 +8,6 @@ import java.text.DecimalFormat;
 import java.text.DecimalFormatSymbols;
 import java.util.List;
 import java.util.Locale;
-import java.util.Optional;
 
 public final class TextReportFormatter {
     public String format(List<PnlReport> reports) {
@@ -27,11 +26,11 @@ public final class TextReportFormatter {
             output.append("  ").append(report.symbol()).append(System.lineSeparator());
             appendLine(output, "Final Quantity", formatQuantity(report.finalQuantity()));
             appendLine(output, "Realized PnL", formatSigned(report.realizedPnl()));
-            appendLine(output, "Unrealized PnL", formatOptionalSigned(report.unrealizedPnl()));
+            appendLine(output, "Unrealized PnL", formatNullableSigned(report.unrealizedPnl()));
             appendLine(output, "Funding PnL", formatSigned(report.fundingPnl()));
-            appendLine(output, "Fees", formatOptionalUnsigned(report.fees()));
+            appendLine(output, "Fees", formatNullableUnsigned(report.fees()));
             output.append("    --------------------------------").append(System.lineSeparator());
-            appendLine(output, "Total PnL", formatOptionalSigned(report.totalPnl()));
+            appendLine(output, "Total PnL", formatNullableSigned(report.totalPnl()));
         }
 
         return output.toString();
@@ -45,12 +44,12 @@ public final class TextReportFormatter {
         return quantity.signum() == 0 ? "0" : quantity.stripTrailingZeros().toPlainString();
     }
 
-    private String formatOptionalSigned(Optional<BigDecimal> value) {
-        return value.map(this::formatSigned).orElse("UNAVAILABLE");
+    private String formatNullableSigned(BigDecimal value) {
+        return value == null ? "UNAVAILABLE" : formatSigned(value);
     }
 
-    private String formatOptionalUnsigned(Optional<BigDecimal> value) {
-        return value.map(this::formatUnsigned).orElse("UNAVAILABLE");
+    private String formatNullableUnsigned(BigDecimal value) {
+        return value == null ? "UNAVAILABLE" : formatUnsigned(value);
     }
 
     private String formatSigned(BigDecimal value) {

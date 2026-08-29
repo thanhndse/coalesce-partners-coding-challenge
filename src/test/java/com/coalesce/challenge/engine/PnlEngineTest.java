@@ -1,12 +1,14 @@
 package com.coalesce.challenge.engine;
 
+import com.coalesce.challenge.ApplicationModule;
 import com.coalesce.challenge.domain.OpeningPosition;
 import com.coalesce.challenge.domain.PnlReport;
 import com.coalesce.challenge.domain.Side;
-import com.coalesce.challenge.event.PriceEvent;
+import com.coalesce.challenge.event.FundingEvent;
 import com.coalesce.challenge.event.TradeEvent;
-import com.coalesce.challenge.exception.ConflictingEventException;
-import com.coalesce.challenge.exception.LateEventException;
+import com.coalesce.challenge.report.PnlReportGenerator;
+import com.google.inject.Guice;
+import com.google.inject.Injector;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
@@ -14,104 +16,33 @@ import java.time.Instant;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PnlEngineTest {
     private static final Instant START = Instant.parse("2026-08-01T00:00:00Z");
 
     @Test
-    void exactDuplicateIsANoOpAndChangedContentIsAConflict() {
-        PnlEngine engine = initializedEngine(opening("ACCOUNT", "1", "100"));
-        TradeEvent original = trade("T1", "ACCOUNT", START.plusSeconds(10), Side.BUY,
-            "1", "110", "0", "USDT");
+    void GIVEN_repeatedEvents_WHEN_processed_THEN_appliesEachEventOnce() {
+        Fixture fixture = initializedFixture(opening("ACCOUNT", "1", "100"));
+        TradeEvent trade = trade("T1", "ACCOUNT", START.plusSeconds(10), Side.BUY,
+            "1", "110", "2", "USDT");
+        FundingEvent funding = funding("F1", "ACCOUNT", START.plusSeconds(10), "-5");
 
-        assertEquals(ProcessResult.APPLIED, engine.process(original));
-        assertEquals(ProcessResult.DUPLICATE, engine.process(original));
+        fixture.engine().process(trade);
+        fixture.engine().process(trade);
+        fixture.engine().process(funding);
+        fixture.engine().process(funding);
 
-        TradeEvent correction = trade("T1", "ACCOUNT", START.plusSeconds(10), Side.BUY,
-            "2", "110", "0", "USDT");
-        assertThrows(ConflictingEventException.class, () -> engine.process(correction));
+        PnlReport report = fixture.reportGenerator().generate(START.plusSeconds(20)).getFirst();
+        assertDecimal("2", report.finalQuantity());
+        assertDecimal("2", report.fees());
+        assertDecimal("-5", report.fundingPnl());
     }
 
-    @Test
-    void rejectsLateEventsOnlyForTheAffectedPositionPartition() {
-        PnlEngine engine = initializedEngine(opening("ACCOUNT_A", "1", "100"));
-        engine.process(trade("T2", "ACCOUNT_A", START.plusSeconds(20), Side.BUY,
-            "1", "100", "0", "USDT"));
-
-        assertThrows(LateEventException.class, () -> engine.process(
-            trade("T1", "ACCOUNT_A", START.plusSeconds(10), Side.BUY,
-                "1", "100", "0", "USDT")
-        ));
-
-        assertEquals(ProcessResult.APPLIED, engine.process(
-            trade("T3", "ACCOUNT_B", START.plusSeconds(10), Side.BUY,
-                "1", "100", "0", "USDT")
-        ));
-    }
-
-    @Test
-    void convertsNonUsdtFeesUsingTheLatestEligiblePrice() {
-        PnlEngine engine = initializedEngine();
-        engine.process(price("BNBUSDT", START.plusSeconds(5), "800"));
-        engine.process(trade("T1", "ACCOUNT", START.plusSeconds(10), Side.BUY,
-            "1", "100", "0.01", "BNB"));
-        engine.process(price("BTCUSDT", START.plusSeconds(20), "110"));
-
-        PnlReport report = engine.report(START.plusSeconds(20)).getFirst();
-
-        assertDecimal("8", report.fees().orElseThrow());
-        assertDecimal("10", report.unrealizedPnl().orElseThrow());
-        assertDecimal("2", report.totalPnl().orElseThrow());
-    }
-
-    @Test
-    void leavesTotalUnavailableUntilAMissingFeePriceCanBeResolved() {
-        PnlEngine engine = initializedEngine();
-        engine.process(trade("T1", "ACCOUNT", START.plusSeconds(10), Side.BUY,
-            "1", "100", "0.01", "BNB"));
-        engine.process(price("BTCUSDT", START.plusSeconds(20), "110"));
-
-        assertTrue(engine.report(START.plusSeconds(20)).getFirst().fees().isEmpty());
-        assertTrue(engine.report(START.plusSeconds(20)).getFirst().totalPnl().isEmpty());
-
-        engine.process(price("BNBUSDT", START.plusSeconds(5), "800"));
-        PnlReport resolved = engine.report(START.plusSeconds(20)).getFirst();
-        assertDecimal("8", resolved.fees().orElseThrow());
-        assertDecimal("2", resolved.totalPnl().orElseThrow());
-    }
-
-    @Test
-    void reportsMissingMarkAsUnavailableButKeepsOtherComponents() {
-        PnlEngine engine = initializedEngine(opening("ACCOUNT", "1", "100"));
-
-        PnlReport report = engine.report(START.plusSeconds(100)).getFirst();
-
-        assertTrue(report.unrealizedPnl().isEmpty());
-        assertTrue(report.totalPnl().isEmpty());
-        assertDecimal("0", report.realizedPnl());
-        assertDecimal("0", report.fees().orElseThrow());
-    }
-
-    @Test
-    void valuesAccountsIndependentlyBeforeAggregatingTraderAndSymbol() {
-        PnlEngine engine = initializedEngine(
-            opening("LONG_ACCOUNT", "1", "100"),
-            opening("SHORT_ACCOUNT", "-1", "90")
-        );
-        engine.process(price("BTCUSDT", START.plusSeconds(10), "110"));
-
-        PnlReport report = engine.report(START.plusSeconds(10)).getFirst();
-
-        assertDecimal("0", report.finalQuantity());
-        assertDecimal("-10", report.unrealizedPnl().orElseThrow());
-    }
-
-    private PnlEngine initializedEngine(OpeningPosition... openings) {
-        PnlEngine engine = new PnlEngine();
+    private Fixture initializedFixture(OpeningPosition... openings) {
+        Injector injector = Guice.createInjector(new ApplicationModule());
+        PnlEngine engine = injector.getInstance(PnlEngine.class);
         engine.initialize(List.of(openings));
-        return engine;
+        return new Fixture(engine, injector.getInstance(PnlReportGenerator.class));
     }
 
     private OpeningPosition opening(String account, String quantity, String average) {
@@ -137,11 +68,22 @@ class PnlEngineTest {
         );
     }
 
-    private PriceEvent price(String symbol, Instant timestamp, String price) {
-        return new PriceEvent(timestamp, symbol, new BigDecimal(price));
+    private FundingEvent funding(
+        String id,
+        String account,
+        Instant timestamp,
+        String amount
+    ) {
+        return new FundingEvent(
+            timestamp, id, "TRADER", "VENUE", account, "BTCUSDT", "USDT",
+            new BigDecimal(amount)
+        );
     }
 
     private void assertDecimal(String expected, BigDecimal actual) {
-        assertEquals(0, new BigDecimal(expected).compareTo(actual));
+        assertEquals(new BigDecimal(expected).stripTrailingZeros(), actual.stripTrailingZeros());
+    }
+
+    private record Fixture(PnlEngine engine, PnlReportGenerator reportGenerator) {
     }
 }

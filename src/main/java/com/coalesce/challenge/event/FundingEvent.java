@@ -1,5 +1,6 @@
 package com.coalesce.challenge.event;
 
+import com.coalesce.challenge.domain.FundingKey;
 import com.coalesce.challenge.domain.PositionKey;
 import com.coalesce.challenge.util.Decimals;
 
@@ -34,8 +35,8 @@ public record FundingEvent(
     }
 
     @Override
-    public String identity() {
-        return "FUNDING:" + venue + ":" + eventId;
+    public Object identity() {
+        return new FundingKey(venue, eventId);
     }
 
     public PositionKey positionKey() {

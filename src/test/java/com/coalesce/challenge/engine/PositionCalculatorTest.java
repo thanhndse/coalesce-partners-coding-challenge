@@ -14,11 +14,22 @@ class PositionCalculatorTest {
     private static final Instant START = Instant.parse("2026-08-01T00:00:00Z");
 
     @Test
-    void appliesWeightedAverageAndRealizesLongReduction() {
+    void GIVEN_flatPosition_WHEN_sellTradeApplied_THEN_opensShortAtTradePrice() {
+        PositionState state = PositionState.empty();
+
+        applyTrade(state, trade("T1", Side.SELL, "2", "100"));
+
+        assertDecimal("-2", state.quantity());
+        assertDecimal("100", state.averageEntryPrice());
+        assertDecimal("0", state.realizedPnl());
+    }
+
+    @Test
+    void GIVEN_longPosition_WHEN_increaseAndReductionApplied_THEN_updatesCostAndPnl() {
         PositionState state = PositionState.from(opening("2", "60000"));
 
-        PositionCalculator.apply(state, trade("T1", Side.BUY, "0.5", "61000"));
-        PositionCalculator.apply(state, trade("T2", Side.SELL, "0.3", "62000"));
+        applyTrade(state, trade("T1", Side.BUY, "0.5", "61000"));
+        applyTrade(state, trade("T2", Side.SELL, "0.3", "62000"));
 
         assertDecimal("2.2", state.quantity());
         assertDecimal("60200", state.averageEntryPrice());
@@ -26,11 +37,11 @@ class PositionCalculatorTest {
     }
 
     @Test
-    void reducesAShortAndThenCrossesThroughZero() {
+    void GIVEN_shortPosition_WHEN_tradesCrossZero_THEN_opensLongRemainder() {
         PositionState state = PositionState.from(opening("-2", "100"));
 
-        PositionCalculator.apply(state, trade("T1", Side.BUY, "0.5", "90"));
-        PositionCalculator.apply(state, trade("T2", Side.BUY, "2", "110"));
+        applyTrade(state, trade("T1", Side.BUY, "0.5", "90"));
+        applyTrade(state, trade("T2", Side.BUY, "2", "110"));
 
         assertDecimal("0.5", state.quantity());
         assertDecimal("110", state.averageEntryPrice());
@@ -38,10 +49,10 @@ class PositionCalculatorTest {
     }
 
     @Test
-    void exactCloseClearsQuantityAndAverageEntry() {
+    void GIVEN_openPosition_WHEN_tradeClosesExactly_THEN_clearsQuantityAndAverage() {
         PositionState state = PositionState.from(opening("1.25", "80"));
 
-        PositionCalculator.apply(state, trade("T1", Side.SELL, "1.25", "84"));
+        applyTrade(state, trade("T1", Side.SELL, "1.25", "84"));
 
         assertDecimal("0", state.quantity());
         assertDecimal("0", state.averageEntryPrice());
@@ -63,7 +74,11 @@ class PositionCalculatorTest {
         );
     }
 
+    private void applyTrade(PositionState state, TradeEvent trade) {
+        PositionCalculator.applyTrade(state, trade, new PriceBook());
+    }
+
     private void assertDecimal(String expected, BigDecimal actual) {
-        assertEquals(0, new BigDecimal(expected).compareTo(actual));
+        assertEquals(new BigDecimal(expected).stripTrailingZeros(), actual.stripTrailingZeros());
     }
 }
